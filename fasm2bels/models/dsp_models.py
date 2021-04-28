@@ -9,8 +9,43 @@
 #
 # SPDX-License-Identifier: ISC
 
+import fasm
 from .verilog_modeling import Bel, Site, make_inverter_path
 import math
+
+def get_init(features, target_features, invert, width):
+    """ Returns INIT argument for specified feature.
+
+    features: List of fasm.SetFeature objects
+    target_feature (list[str]): Target feature prefix (e.g. INIT_A or INITP_0).
+        If multiple features are specified, first feature will be set at LSB.
+    invert (bool): Controls whether output value should be bit inverted.
+    width (int): Bit width of INIT value.
+
+    Returns int
+
+    """
+
+    assert width % len(target_features) == 0, (width, len(target_features))
+
+    final_init = 0
+    for idx, target_feature in enumerate(target_features):
+        init = 0
+        for f in features:
+            if f.feature.startswith(target_feature):
+                for canon_f in fasm.canonical_features(f):
+                    if canon_f.start is None:
+                        init |= 1
+                    else:
+                        init |= (1 << canon_f.start)
+
+        final_init |= init << idx * (width // len(target_features))
+
+    if invert:
+        final_init ^= (2**width) - 1
+
+    return "{{width}}'h{{init:0{}X}}".format(int(math.ceil(width / 4))).format(
+        width=width, init=final_init)
 
 
 def make_hex_verilog_value(width, value):
@@ -29,7 +64,6 @@ def get_dsp_site(db, grid, tile, attribute):
     for site in sites:
         for pin in site.site_pins:
             if site.type == target_type and pin.wire == attribute:
-                print(f"returning {site} from pin {pin}")
                 return site
 
     assert False, sites
@@ -68,7 +102,6 @@ def process_dsp_slice(top, features, set_features):
     def make_target_feature(feature):
         return '{}.{}.{}'.format(aparts[0], aparts[1], feature)
     
-    '''
     # parameters
     AREG = 1
     if 'AREG_0' in set_features:
@@ -77,7 +110,7 @@ def process_dsp_slice(top, features, set_features):
         AREG = 1
     elif 'AREG_2' in set_features:
         AREG = 2
-    elif fnmatch.fnmatch(set_features, 'AREG_[3-9]'):
+    elif 'AREG_' in set_features:
         assert False, "Invalid AREG parameter. Must be 0, 1, 2"
     
     bel.parameters['AREG'] = AREG
@@ -96,7 +129,7 @@ def process_dsp_slice(top, features, set_features):
         BREG = 1
     elif 'BREG_2' in set_features:
         BREG = 2
-    elif fnmatch.fnmatch(set_features, 'BREG_[3-9]'):
+    elif 'BREG_' in set_features:
         assert False, "Invalid BREG parameter. Must be 0, 1, 2"
     bel.parameters['BREG'] = BREG
     
@@ -107,24 +140,10 @@ def process_dsp_slice(top, features, set_features):
         BCASCREG = 1
     bel.parameters['BCASCREG'] = BCASCREG
     
-    A_INPUT = 'DIRECT' # default 
-    B_INPUT = 'DIRECT'
+    A_INPUT = '\"DIRECT\"' # default 
+    B_INPUT = '\"DIRECT\"'
     bel.parameters['A_INPUT'] = A_INPUT
     bel.parameters['B_INPUT'] = B_INPUT
-    '''
-
-    parameter_binds = [
-        ('ADREG', 'ZADREG', True, 1),
-        ('ALUMODEREG', 'ZALUMODEREG', True, 1),
-        ('CARRYINREG', 'ZCARRYINREG', True, 1),
-        ('CARRYINSELREG', 'ZCARRYINSELREG', True, 1),
-    ]
-    
-    for vparam, fparam, invert, width in parameter_binds:
-        bel.parameters[vparam] = get_init(
-            features, [make_target_feature(p) for p in fparam],
-            invert=invert,
-            width=width)
 
     # Reset input signals
     for wire in (
@@ -182,6 +201,24 @@ def process_dsp_slice(top, features, set_features):
             sink_site_type_pin=wire,
         )
 
+    # clk signal
+    for wire in (
+        'CLK',
+    ):
+        wire_inverted = (not 'ZINV_{}'.format(wire) in set_features)
+        site_pips = make_inverter_path(wire, wire_inverted)
+
+        wire_name = make_wire(wire)
+        site.add_sink(
+            bel=bel,
+            cell_pin=wire,
+            sink_site_pin=wire_name,
+            bel_name=bel.bel,
+            bel_pin=wire,
+            site_pips=site_pips,
+            sink_site_type_pin=wire,
+        )
+
     input_wires = [
         #("ACIN", 30),
         ("ALUMODE", 4),
@@ -189,7 +226,7 @@ def process_dsp_slice(top, features, set_features):
         #("BCIN", 18),
         ("B", 18),
         ("CARRYINSEL", 3),
-        #("C", 48),
+        ("C", 48),
         ("D", 25),
         ("INMODE", 5),
         ("OPMODE", 7),
@@ -212,7 +249,7 @@ def process_dsp_slice(top, features, set_features):
         ('ACOUT', 30),
         ('BCOUT', 18),
         ('CARRYOUT', 4),
-        #('PCOUT', 48),
+        ('PCOUT', 48),
         ('P', 48),
     ]:
         for idx in range(width):
@@ -249,12 +286,6 @@ def process_dsp(conn, top, tile_name, features):
         elif 'DSP_1_' in parts[1]:
             dsp_features['DSP_1'].add('.'.join(parts[1:]))
             dsps['DSP_1'].append(f)
-        #elif parts[2] in dsps:
-        #    dsp_features[parts[2]].add('.'.join(parts[3:]))
-        #    dsps[parts[2]].append(f)
-    
-    print(f"dsps = {dsps}")
-    print(f"features = {dsp_features}")
 
     """
     DSP48E1 Config:
