@@ -769,8 +769,8 @@ class Site(object):
                         ))
                 else:
                     parts = f.feature.split('.')
-                    assert parts[0] == aparts[0]
-                    assert parts[1] == aparts[1]
+                    #assert parts[0] == aparts[0]
+                    #assert parts[1] == aparts[1]
                     self.set_features.add(
                         fasm.SetFasmFeature(
                             feature='.'.join(parts[2:]),

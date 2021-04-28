@@ -32,6 +32,7 @@ from .models.verilog_modeling import Module
 from .models.cmt_models import process_cmt_upper_t, process_cmt_lower_b
 from .models.bram_models import process_bram
 from .models.clb_models import process_clb
+from .models.dsp_models import process_dsp
 from .models.clk_models import process_hrow, process_bufg
 from .models.iob_models import process_iobs
 from .models.ioi_models import process_ioi
@@ -39,7 +40,6 @@ from .models.hclk_ioi3_models import process_hclk_ioi3
 from .models.pss_models import get_ps7_site, insert_ps7
 from .models.gtp_common_models import process_gtp_common
 from .models.gtp_channel_models import process_gtp_channel
-from .models.pcie_models import process_pcie
 
 from .database.create_channels import create_channels
 from .database.connection_db_utils import get_tile_type
@@ -77,6 +77,8 @@ PROCESS_TILE = {
     'CLBLL_R': process_clb,
     'CLBLM_L': process_clb,
     'CLBLM_R': process_clb,
+    'DSP_L': process_dsp,
+    'DSP_R': process_dsp,
     'INT_L': null_process,
     'INT_R': null_process,
     'LIOB33': process_iobs,
@@ -128,7 +130,6 @@ PROCESS_TILE = {
     'GTP_INT_INTERFACE': null_process,
     'GTP_INT_INTERFACE_L': null_process,
     'GTP_INT_INTERFACE_R': null_process,
-    'PCIE_BOT': process_pcie,
 }
 
 
