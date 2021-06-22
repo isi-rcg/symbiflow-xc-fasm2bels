@@ -13,41 +13,6 @@ import fasm
 from .verilog_modeling import Bel, Site, make_inverter_path
 import math
 
-def get_init(features, target_features, invert, width):
-    """ Returns INIT argument for specified feature.
-
-    features: List of fasm.SetFeature objects
-    target_feature (list[str]): Target feature prefix (e.g. INIT_A or INITP_0).
-        If multiple features are specified, first feature will be set at LSB.
-    invert (bool): Controls whether output value should be bit inverted.
-    width (int): Bit width of INIT value.
-
-    Returns int
-
-    """
-
-    assert width % len(target_features) == 0, (width, len(target_features))
-
-    final_init = 0
-    for idx, target_feature in enumerate(target_features):
-        init = 0
-        for f in features:
-            if f.feature.startswith(target_feature):
-                for canon_f in fasm.canonical_features(f):
-                    if canon_f.start is None:
-                        init |= 1
-                    else:
-                        init |= (1 << canon_f.start)
-
-        final_init |= init << idx * (width // len(target_features))
-
-    if invert:
-        final_init ^= (2**width) - 1
-
-    return "{{width}}'h{{init:0{}X}}".format(int(math.ceil(width / 4))).format(
-        width=width, init=final_init)
-
-
 def make_hex_verilog_value(width, value):
     return "{width}'h{{:0{format_width}X}}".format(
         width=width, format_width=int(math.ceil(width / 4))).format(value)
@@ -63,7 +28,7 @@ def get_dsp_site(db, grid, tile, attribute):
     sites = tile_type.get_instance_sites(gridinfo)
     for site in sites:
         for pin in site.site_pins:
-            if site.type == target_type and pin.wire == attribute:
+            if site.type == target_type and pin.wire == attribute:                 
                 return site
 
     assert False, sites
@@ -102,17 +67,13 @@ def process_dsp_slice(top, features, set_features):
     def make_target_feature(feature):
         return '{}.{}.{}'.format(aparts[0], aparts[1], feature)
     
+
     # parameters
     AREG = 1
     if 'AREG_0' in set_features:
         AREG = 0
-    elif 'AREG_1' in set_features:
-        AREG = 1
     elif 'AREG_2' in set_features:
         AREG = 2
-    elif 'AREG_' in set_features:
-        assert False, "Invalid AREG parameter. Must be 0, 1, 2"
-    
     bel.parameters['AREG'] = AREG
     
     ACASCREG = 1
@@ -120,17 +81,25 @@ def process_dsp_slice(top, features, set_features):
         ACASCREG = 0
     elif AREG == 1:
         ACASCREG = 1
+    elif 'ZAREG_2_ACASCREG_1' in set_features:
+        ACASCREG = 2
     bel.parameters['ACASCREG'] = ACASCREG
 
+    ADREG = 1
+    if 'ZADREG' in set_features:
+        ADREG = 0
+    bel.parameters['ADREG'] = ADREG
+    
+    ALUMODEREG = 1
+    if 'ZALUMODEREG' in set_features:
+        ALUMODEREG = 0
+    bel.parameters['ALUMODEREG'] = ALUMODEREG
+    
     BREG = 1
     if 'BREG_0' in set_features:
         BREG = 0
-    elif 'BREG_1' in set_features:
-        BREG = 1
     elif 'BREG_2' in set_features:
         BREG = 2
-    elif 'BREG_' in set_features:
-        assert False, "Invalid BREG parameter. Must be 0, 1, 2"
     bel.parameters['BREG'] = BREG
     
     BCASCREG = 1
@@ -138,13 +107,91 @@ def process_dsp_slice(top, features, set_features):
         BCASCREG = 0
     elif BREG == 1:
         BCASCREG = 1
+    elif 'ZBREG_2_BCASCREG_1' in set_features:
+        ACASCREG = 2
     bel.parameters['BCASCREG'] = BCASCREG
     
-    A_INPUT = '\"DIRECT\"' # default 
-    B_INPUT = '\"DIRECT\"'
+    CARRYINREG = 1
+    if 'ZCARRYINREG' in set_features:
+        CARRYINREG = 0
+    bel.parameters['CARRYINREG'] = CARRYINREG
+    
+    CARRYINSELREG = 1
+    if 'ZCARRYINSELREG' in set_features:
+        CARRYINSELREG = 0
+    bel.parameters['CARRYINSELREG'] = CARRYINSELREG
+    
+    CREG = 1
+    if 'ZCREG' in set_features:
+        CREG = 0
+    bel.parameters['CREG'] = CREG 
+    
+    DREG = 1
+    if 'ZDREG' in set_features:
+        DREG = 0
+    bel.parameters['DREG'] = DREG 
+    
+    INMODEREG = 1
+    if 'ZINMODEREG' in set_features:
+        INMODEREG = 0
+    bel.parameters['INMODEREG'] = INMODEREG 
+    
+    MREG = 1
+    if 'ZMREG' in set_features:
+        MREG = 0
+    bel.parameters['MREG'] = MREG 
+    
+    OPMODEREG = 1
+    if 'ZOPMODEREG' in set_features:
+        OPMODEREG = 0
+    bel.parameters['OPMODEREG'] = OPMODEREG
+    
+    PREG = 1
+    if 'ZPREG' in set_features:
+        PREG = 0
+    bel.parameters['PREG'] = PREG 
+    
+    
+    # if the A/B_INPUT is present, we use DIRECT
+    if 'A_INPUT' not in set_features:
+        A_INPUT = '"CASCADE"'
+    else:
+        A_INPUT = '"DIRECT"' # default 
+    
+    if 'B_INPUT' not in set_features:
+        B_INPUT = '"CASCADE"'
+    else: 
+        B_INPUT = '"DIRECT"'
+
     bel.parameters['A_INPUT'] = A_INPUT
     bel.parameters['B_INPUT'] = B_INPUT
+    
+    # DPORT
+    if 'USE_DPORT' not in set_features:
+        USE_DPORT = '"FALSE"'
+    else:
+        USE_DPORT = '"TRUE"'
+    bel.parameters['USE_DPORT'] = USE_DPORT
+    
+    # USE_SIMD + override USE_MULT if necessary
+    if 'USE_SIMD_FOUR12_TWO24' and 'USE_SIMD_FOUR12' in set_features:
+        USE_SIMD = '"FOUR12"'
+        USE_MULT = '"NONE"'
+    elif 'USE_SIMD_FOUR12_TWO24' in set_features:
+        USE_SIMD = '"TWO24"'
+        USE_MULT = '"NONE"'
+    else:
+        USE_SIMD = '"ONE48"'
 
+    # TODO FEATURE CONTROLS
+    # 1. USE_MULT 
+    # 2. AUTORESET_PATDET
+    # 3. MASK
+    # 4. PATTERN
+    # 5. SEL_MASK
+    # 6. SEL_PATTERN
+    # 7. USE_PATTERN_DETECT
+     
     # Reset input signals
     for wire in (
         'RSTA',
@@ -220,17 +267,14 @@ def process_dsp_slice(top, features, set_features):
         )
 
     input_wires = [
-        #("ACIN", 30),
         ("ALUMODE", 4),
         ("A", 30),
-        #("BCIN", 18),
         ("B", 18),
         ("CARRYINSEL", 3),
         ("C", 48),
         ("D", 25),
         ("INMODE", 5),
         ("OPMODE", 7),
-        #("PCIN", 48),
     ]
 
     for input_wire, width in input_wires:
@@ -286,6 +330,10 @@ def process_dsp(conn, top, tile_name, features):
         elif 'DSP_1_' in parts[1]:
             dsp_features['DSP_1'].add('.'.join(parts[1:]))
             dsps['DSP_1'].append(f)
+        elif 'DSP_0' in parts[2]:
+            dsp_features['DSP_0'].add(parts[3])
+        elif 'DSP_1' in parts[2]:
+            dsp_features['DSP_1'].add(parts[3])
 
     """
     DSP48E1 Config:
